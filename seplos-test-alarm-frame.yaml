@@ -1,0 +1,228 @@
+# Config di PROVA per la PR #155 (Decode alarm frame) di syssi.
+# Non e' la config di produzione: prefisso entita' "seplos-test-alarm" per non
+# collidere con quelle esistenti. Flashare su UN SOLO pacco, tenendo l'altro
+# sul firmware attuale come riferimento. Vedi TESTING-NOTES.md.
+
+substitutions:
+  name: seplos-test-alarm
+  device_description: "Monitor a Seplos BMS via RS485"
+  external_components_source: github://syssi/esphome-seplos-bms@main
+  #tx_pin: GPIO4
+  #rx_pin: GPIO5
+  tx_pin: GPIO16
+  rx_pin: GPIO17
+  baud_rate: 9600
+
+esphome:
+  name: ${name}
+  comment: ${device_description}
+  project:
+    name: "syssi.esphome-seplos-bms"
+    version: 1.1.0
+
+esp32:
+  #board: wemos_d1_mini32
+  board: esp32dev
+  framework: 
+    type: esp-idf
+    advanced:
+      minimum_chip_revision: "3.1"
+      sram1_as_iram: true
+    
+    
+
+# Componenti della PR #155 presi direttamente dal branch del fork
+external_components:
+  - source:
+      type: git
+      url: https://github.com/7hemas7er/esphome-seplos-bms
+      ref: test/alarm-frame-155
+    components: [seplos_bms, seplos_modbus]
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_IOT
+  password: !secret wifi_IOT_password
+  fast_connect: true
+  reboot_timeout: 15min
+  power_save_mode: none
+  ap:
+    ssid: "Seplos-bms"
+    password: !secret fallback_password
+
+ota:
+  platform: esphome
+  password: !secret ota_password
+logger:
+  # DEBUG serve per vedere "Alarm frame (N bytes)" nei log
+  level: DEBUG
+
+# If you use Home Assistant please remove this `mqtt` section and uncomment the `api` component!
+# The native API has many advantages over MQTT: https://esphome.io/components/api.html#advantages-over-mqtt
+#mqtt:
+#  broker: !secret mqtt_host
+#  username: !secret mqtt_username
+#  password: !secret mqtt_password
+#  id: mqtt_client
+ # Enable fallback hotspot (captive portal) in case wifi connection fails
+
+
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+uart:
+  id: uart_0
+  # Please set the default baudrate of your Seplos BMS model here. It's sometimes 19200 baud instead of 9600.
+  baud_rate: ${baud_rate}
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  # The increased RX buffer size is important because
+  # the full BMS response must fit into the buffer
+  rx_buffer_size: 384
+
+seplos_modbus:
+  id: modbus0
+  uart_id: uart_0
+  rx_timeout: 250ms
+
+seplos_bms:
+  id: bms0
+  # Dip switch configuration of a single pack setup / address 0x0
+  #  8    7    6    5    4    3    2    1
+  # off, off, off, off, off, off, off, off
+  address: 0x00
+  # Known protocol versions: 0x20 (Seplos), 0x26 (Boqiang)
+  protocol_version: 0x20
+  seplos_modbus_id: modbus0
+  update_interval: 5s
+
+sensor:
+  - platform: seplos_bms
+    min_cell_voltage:
+      name: "${name} min cell voltage"
+    max_cell_voltage:
+      name: "${name} max cell voltage"
+    min_voltage_cell:
+      name: "${name} min voltage cell"
+    max_voltage_cell:
+      name: "${name} max voltage cell"
+    delta_cell_voltage:
+      name: "${name} delta cell voltage"
+    average_cell_voltage:
+      name: "${name} average cell voltage"
+    cell_voltage_1:
+      name: "${name} cell voltage 1"
+    cell_voltage_2:
+      name: "${name} cell voltage 2"
+    cell_voltage_3:
+      name: "${name} cell voltage 3"
+    cell_voltage_4:
+      name: "${name} cell voltage 4"
+    cell_voltage_5:
+      name: "${name} cell voltage 5"
+    cell_voltage_6:
+      name: "${name} cell voltage 6"
+    cell_voltage_7:
+      name: "${name} cell voltage 7"
+    cell_voltage_8:
+      name: "${name} cell voltage 8"
+    cell_voltage_9:
+      name: "${name} cell voltage 9"
+    cell_voltage_10:
+      name: "${name} cell voltage 10"
+    cell_voltage_11:
+      name: "${name} cell voltage 11"
+    cell_voltage_12:
+      name: "${name} cell voltage 12"
+    cell_voltage_13:
+      name: "${name} cell voltage 13"
+    cell_voltage_14:
+      name: "${name} cell voltage 14"
+    cell_voltage_15:
+      name: "${name} cell voltage 15"
+    cell_voltage_16:
+      name: "${name} cell voltage 16"
+    temperature_1:
+      name: "${name} temperature 1"
+    temperature_2:
+      name: "${name} temperature 2"
+    temperature_3:
+      name: "${name} temperature 3"
+    temperature_4:
+      name: "${name} temperature 4"
+    temperature_5:
+      name: "${name} environment temperature"
+    temperature_6:
+      name: "${name} mosfet temperature"
+    total_voltage:
+      name: "${name} total voltage"
+    current:
+      name: "${name} current"
+    power:
+      name: "${name} power"
+    charging_power:
+      name: "${name} charging power"
+      unit_of_measurement: "W"
+      device_class: energy
+      state_class: measurement
+    discharging_power:
+      name: "${name} discharging power"
+      device_class: energy
+      unit_of_measurement: "W"
+      state_class: measurement
+    residual_capacity:
+      name: "${name} residual capacity"
+    battery_capacity:
+      name: "${name} battery capacity"
+    rated_capacity:
+      name: "${name} rated capacity"
+    state_of_charge:
+      name: "${name} state of charge"
+    charging_cycles:
+      name: "${name} charging cycles"
+    state_of_health:
+      name: "${name} state of health"
+    port_voltage:
+      name: "${name} port voltage"
+
+  - platform: wifi_signal
+    name: "${name} RSSI"
+    update_interval: 60s
+  - platform: uptime
+    name: "${name} uptime"
+
+
+binary_sensor:
+  - platform: seplos_bms
+    seplos_bms_id: bms0
+    online_status:
+      name: "${name} online"
+    charging:
+      name: "${name} charging"
+    discharging:
+      name: "${name} discharging"
+    voltage_protection:
+      name: "${name} voltage protection"
+    temperature_protection:
+      name: "${name} temperature protection"
+    current_protection:
+      name: "${name} current protection"
+    soc_protection:
+      name: "${name} soc protection"
+    balancing:
+      name: "${name} balancing"
+
+text_sensor:
+  - platform: seplos_bms
+    seplos_bms_id: bms0
+    errors:
+      name: "${name} errors"
+    alarms:
+      name: "${name} alarms"
+  - platform: wifi_info
+    bssid:
+      name: "${name} bssid"
+    ip_address:
+      name: "${name} ip"
