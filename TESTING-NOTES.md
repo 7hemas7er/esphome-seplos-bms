@@ -55,55 +55,50 @@ Instrada in ricezione con un'euristica sulla **dimensione** del frame
 (`last_requested_function_`), e instradando su quello invece che sulla
 dimensione.
 
-Valutazione onesta: **quella di syssi è migliore**, e non di poco.
+Valutazione onesta: **quella di syssi è migliore**, ma per robustezza, non
+perché la nostra stesse sbagliando.
 
-Avevo scritto qui che il nostro instradamento esplicito era un punto a favore
-rispetto all'euristica sulla dimensione. **È il contrario, ed è dimostrato.**
+### Correzione: non ci sono falsi positivi
 
-### Il nostro instradamento è la causa dei falsi positivi
+In una prima analisi avevo concluso che il nostro decoder producesse ~83 falsi
+positivi al giorno. **Era sbagliato, ed è ritirato.** Quel numero veniva dal
+contare tutte le transizioni di stato registrate, mescolando il flapping
+`unavailable` del nodo (problema di brownout già noto) con i veri cambi di
+allarme.
 
-Misurato sull'impianto il 14/09/2026: `protection` del pacco 2 si accende per
-un solo frame **~83 volte al giorno** (830 transizioni in 10 giorni), su un
-pacco che non è in protezione. Ogni impulso dura esattamente ~10s, cioè un
-ciclo di alternanza.
-
-Il meccanismo:
-
-1. `update()` manda 0x44 e imposta `last_requested_function_ = 0x44`.
-2. La risposta tarda o si perde.
-3. `update()` successivo manda 0x42 e imposta il flag a 0x42.
-4. Arriva **in ritardo la risposta 0x42** del ciclo precedente... o peggio, la
-   0x44: in entrambi i casi il flag non corrisponde più al frame che arriva, e
-   il frame finisce nel decoder sbagliato.
-
-Quando un frame di telemetria finisce in `on_telesignalization_data_`, il
-nostro codice non ha **nessun** controllo che lo respinga: non valida la
-dimensione, e legge `temperature_sensors` senza validarlo. Verificato sul frame
-di telemetria reale dei test upstream (16 celle, `data[8]=0x10`): passa il
-controllo celle, passa tutto, e i byte degli "alarm event" finiscono per essere
-i **valori di temperatura** (0x0B 0xA6 = 25,1 °C) letti come bitfield.
-
-Risultato pubblicato su quel frame:
+Il sensore `errors` chiude la questione. Su 10 giorni e 881 record, gli unici
+valori che compaiono sono:
 
 ```
-protection = ON, warning = ON, system fault = ON
-errors = "Temp sensor fault; Current sensor fault; Cell high voltage;
-          Cell overvoltage; Cell undervoltage; Charge over-temp; ...;
-          Output short circuit; Short-circuit lockout; ..."
+""                                                 nessun allarme
+"Low remaining capacity"                           mattina, SOC basso
+"Intermittent supply waiting"                      attesa ricarica
+"Cell high voltage; Intermittent supply waiting"   pomeriggio, pacco pieno
+"Cell overvoltage; Intermittent supply waiting"    pomeriggio, pacco pieno
+unavailable                                        nodo offline
 ```
 
-17 allarmi simultanei, cortocircuito in uscita compreso.
+Tutti fisicamente coerenti, e la sequenza è da manuale: a pacco pieno sotto
+~2 kW di carica il BMS cicla high voltage → overvoltage → attesa → rilascio.
+Gli impulsi da ~10s che avevo preso per artefatti sono il comportamento reale
+del BMS in assorbimento. Nessuna traccia di frame mal decodificati.
 
-**#155 è immune per costruzione**: instrada con
-`data.size() >= 9 && data.size() < 60`, e un frame di telemetria a 16 celle ne
-ha 81 (150 sul nostro hardware). Non può finire nel decoder allarmi. In più
-valida `temp_count > 8` e richiede `alarm_events_offset + 14` byte disponibili,
-due guardie che a noi mancano entrambe.
+### Il difetto di instradamento resta reale, ma è latente
 
-Questo è anche il motivo per cui la sua scelta di concatenare invece di
-alternare è più robusta, non solo più fresca: il secondo comando parte *dopo*
-la risposta al primo, quindi non c'è una finestra in cui il flag e il frame in
-arrivo possono divergere.
+Instradare con `last_requested_function_` è fragile per costruzione: se una
+risposta tarda o si perde, il flag punta al comando sbagliato e il frame
+finisce nel decoder sbagliato. Verificato in simulazione sul frame di
+telemetria dei test upstream (16 celle): passava tutte le guardie del nostro
+decoder allarmi e produceva 17 allarmi simultanei.
+
+Ma **non è mai successo in produzione** su questo impianto. È una vulnerabilità,
+non un bug attivo.
+
+Il fork è stato comunque corretto (instradamento per lunghezza del frame, più
+validazione di `temp_count` e della regione eventi), perché la fragilità è
+reale. #155 non ha mai avuto il problema: instrada per dimensione fin
+dall'inizio, e concatena invece di alternare, quindi non esiste nemmeno la
+finestra in cui flag e frame possono divergere.
 
 ## Cosa possiamo dare che manca
 
@@ -113,13 +108,17 @@ Seplos, di cui uno che in questo momento riporta warning e protection.
 
 Da verificare flashando questo branch:
 
-1. **Le 7 binary sensor restano stabili?** È la domanda principale. Il nostro
-   fork produce ~83 impulsi spuri al giorno sullo stesso pacco: se #155 sta
-   piatto per 24-48h, è il contro-esempio documentato che serve. syssi è già
-   stato morso dai falsi positivi
+1. **Le 7 flag granulari concordano con i 3 aggregati del nostro fork?** È la
+   domanda principale, e ora che sappiamo che il nostro decodifica
+   correttamente, è un confronto fra due implementazioni indipendenti sullo
+   stesso hardware. Caso di prova ideale: il pomeriggio a pacco pieno, quando
+   il nostro riporta `Cell overvoltage; Intermittent supply waiting`. La #155
+   dovrebbe accendere `voltage_protection` e mostrare le stesse condizioni in
+   `alarms`. Due decoder indipendenti che concordano su un pacco reale sono
+   esattamente l'evidenza che manca a una PR ferma da 14 mesi con la CI verde —
+   e syssi è già stato morso dai falsi positivi
    ([#232](https://github.com/syssi/esphome-seplos-bms/pull/232) "Fix EIC
-   false-positive problem detection") ed è la ragione più probabile per cui una
-   PR con la CI verde è ferma da 14 mesi.
+   false-positive problem detection").
 2. `alarms` ed `errors` riportano testo sensato o stringhe vuote?
 3. L'euristica sulla dimensione instrada correttamente entrambi i frame su un
    pacco a 16 celle? (Telemetria 150 byte, allarme ~55: margine ampio rispetto
