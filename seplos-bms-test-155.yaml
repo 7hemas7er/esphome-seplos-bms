@@ -11,7 +11,6 @@
 substitutions:
   name: seplos-bms
   device_description: "Monitor a Seplos BMS via RS485"
-  external_components_source: github://syssi/esphome-seplos-bms@main
   #tx_pin: GPIO4
   #rx_pin: GPIO5
   tx_pin: GPIO16
@@ -35,7 +34,13 @@ esp32:
       sram1_as_iram: true
     
 
-# PR #155 di syssi, presa dal branch del fork
+# Sorgente dei componenti. E' QUESTO il blocco che conta: la substitution
+# "external_components_source" che c'era nella config originale non era
+# referenziata da nessuna parte ed e' stata rimossa.
+#
+# Forma esplicita e non abbreviata perche' il branch contiene uno slash:
+# la forma breve github://utente/repo@ref copre "branch o tag" semplici.
+# Per tornare all'upstream basta:  - source: github://syssi/esphome-seplos-bms@main
 external_components:
   - source:
       type: git
