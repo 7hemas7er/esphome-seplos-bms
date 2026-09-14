@@ -8,13 +8,32 @@ continuano a funzionare senza toccare nulla. Cambia solo la parte allarmi.
 
 ## Passi
 
-1. Copia `seplos-bms-test-155.yaml` in `/homeassistant/esphome/` sul .26.
-2. **Fai una copia di sicurezza della config attuale** prima di sovrascrivere
-   qualcosa:
-   `cp /homeassistant/esphome/esphome-web-e6554c.yaml /homeassistant/esphome/esphome-web-e6554c.yaml.pre155`
-3. Dalla dashboard ESPHome: Install → OTA sul device `seplos-bms`.
-   La prima compilazione scarica i componenti da GitHub, quindi ci mette un po'.
-4. Il device riparte e si ripresenta con lo stesso nome.
+La config di test dichiara `name: seplos-bms`, lo stesso della config attuale.
+**Non metterla come file separato**: la dashboard ESPHome mostrerebbe due
+schede entrambe chiamate "seplos-bms" e non si capisce piu' quale si sta
+installando. Va sostituito il contenuto del file esistente.
+
+Da SSH sul .26:
+
+```bash
+# 1. backup della config attuale
+sudo cp /homeassistant/esphome/esphome-web-e6554c.yaml \
+        /homeassistant/esphome/esphome-web-e6554c.yaml.pre155
+
+# 2. scarica la config di test al posto suo
+sudo curl -fsSL -o /homeassistant/esphome/esphome-web-e6554c.yaml \
+  https://raw.githubusercontent.com/7hemas7er/esphome-seplos-bms/refs/heads/test/alarm-frame-155/seplos-bms-test-155.yaml
+
+# 3. verifica che il backup ci sia e che il nuovo file sia arrivato intero
+ls -l /homeassistant/esphome/esphome-web-e6554c.yaml*
+grep -c "alarm_event" /homeassistant/esphome/esphome-web-e6554c.yaml   # atteso: 9
+```
+
+Poi dalla dashboard ESPHome: **Install → Wirelessly (OTA)** sulla scheda
+`seplos-bms`. La prima compilazione scarica i componenti da GitHub, quindi ci
+mette qualche minuto in piu' del solito.
+
+Il device riparte e si ripresenta con lo stesso nome.
 
 Non serve toccare `secrets.yaml`: la config usa le stesse chiavi di prima
 (`wifi_IOT`, `wifi_IOT_password`, `fallback_password`, `api_encryption_key`,
@@ -93,8 +112,9 @@ utile il commento sulla PR.
 
 Reinstalla la config precedente:
 
-```
-cp /homeassistant/esphome/esphome-web-e6554c.yaml.pre155 /homeassistant/esphome/esphome-web-e6554c.yaml
+```bash
+sudo cp /homeassistant/esphome/esphome-web-e6554c.yaml.pre155 \
+        /homeassistant/esphome/esphome-web-e6554c.yaml
 ```
 
 poi Install → OTA. Gli entity_id della telemetria non si sono mai mossi; le
